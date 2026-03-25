@@ -12,7 +12,7 @@ Four sequential phases that build the pipeline from the inside out: the bitrate 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Node.js ESM project scaffolding, bundled FFmpeg, and the pure bitrate calculator
+- [x] **Phase 1: Foundation** - Node.js ESM project scaffolding, bundled FFmpeg, and the pure bitrate calculator (completed 2026-03-25)
 - [ ] **Phase 2: Input Analysis** - FFmpeg availability check, input file validation, and ffprobe probe
 - [ ] **Phase 3: Core Encoding** - Two-pass H.264 pipeline with progress display, temp-file safety, and output verification
 - [ ] **Phase 4: CLI Polish** - Full CLI flags, overwrite protection, human-readable errors, and dry-run mode
@@ -28,7 +28,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The bitrate calculator returns the correct `videoBitrateKbps` for known inputs (e.g., a 60-second video produces a value within 1 kbps of the expected result)
   3. All variable names in the bitrate module carry explicit unit suffixes (`targetSizeBytes`, `videoBitrateKbps`, `audioBitsTotal`) and the 9.6 MiB / 9.8 MiB constants are documented with binary-vs-decimal comments
   4. Unit tests for the bitrate calculator pass with zero failures
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 01-01-PLAN.md — Project scaffold, error hierarchy, bitrate calculator, and stub modules
@@ -77,7 +77,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/2 | In Progress|  |
+| 1. Foundation | 2/2 | Complete   | 2026-03-25 |
 | 2. Input Analysis | 0/TBD | Not started | - |
 | 3. Core Encoding | 0/TBD | Not started | - |
 | 4. CLI Polish | 0/TBD | Not started | - |
