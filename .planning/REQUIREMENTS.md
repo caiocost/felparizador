@@ -9,10 +9,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Foundation
 
-- [ ] **FOUND-01**: Project uses Node.js 22 LTS with ESM modules (`"type": "module"`)
-- [ ] **FOUND-02**: `ffmpeg-static` bundles FFmpeg binary so users don't need to install FFmpeg separately
-- [ ] **FOUND-03**: Bitrate calculator is a pure function with explicit unit-suffixed variable names (`targetSizeBytes`, `videoBitrateKbps`, `audioBitsTotal`)
-- [ ] **FOUND-04**: Target size constant is defined as `9.6 MiB` (effective) with `9.8 MiB` as the ceiling, with comments explaining binary MiB convention
+- [x] **FOUND-01**: Project uses Node.js 22 LTS with ESM modules (`"type": "module"`)
+- [x] **FOUND-02**: `ffmpeg-static` bundles FFmpeg binary so users don't need to install FFmpeg separately
+- [x] **FOUND-03**: Bitrate calculator is a pure function with explicit unit-suffixed variable names (`targetSizeBytes`, `videoBitrateKbps`, `audioBitsTotal`)
+- [x] **FOUND-04**: Target size constant is defined as `9.6 MiB` (effective) with `9.8 MiB` as the ceiling, with comments explaining binary MiB convention
 
 ### Input Validation
 
@@ -88,10 +88,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
-| FOUND-02 | Phase 1 | Pending |
-| FOUND-03 | Phase 1 | Pending |
-| FOUND-04 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | Complete |
+| FOUND-02 | Phase 1 | Complete |
+| FOUND-03 | Phase 1 | Complete |
+| FOUND-04 | Phase 1 | Complete |
 | INPUT-01 | Phase 2 | Pending |
 | INPUT-02 | Phase 2 | Pending |
 | INPUT-03 | Phase 2 | Pending |
