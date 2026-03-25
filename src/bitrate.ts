@@ -15,7 +15,7 @@
 // ──────────────────────────────────────────────────────────────────
 
 /** 1 MiB in bytes (binary: 1024 * 1024 = 1,048,576) */
-const MIB_TO_BYTES = 1_048_576;
+export const MIB_TO_BYTES = 1_048_576;
 
 /** Effective target in MiB — what the bitrate formula aims for (binary MiB, NOT decimal MB) */
 export const TARGET_EFFECTIVE_MIB = 9.6;
@@ -48,6 +48,18 @@ export const TARGET_CEILING_BYTES = Math.floor(TARGET_CEILING_MIB * MIB_TO_BYTES
  * @param audioBitrateKbps - Audio stream bitrate in kbps (0 if no audio)
  * @returns videoBitrateKbps as an integer >= 1 (minimum guard prevents negative/zero)
  */
+/**
+ * Derive effective/ceiling byte targets from a ceiling MiB value (same 0.2 MiB gap as 9.6/9.8 defaults).
+ */
+export function targetBytesFromCeilingMiB(ceilingMiB: number): {
+  effectiveBytes: number;
+  ceilingBytes: number;
+} {
+  const ceilingBytes = Math.floor(ceilingMiB * MIB_TO_BYTES);
+  const effectiveBytes = Math.floor(Math.max(0.1, ceilingMiB - 0.2) * MIB_TO_BYTES);
+  return { effectiveBytes, ceilingBytes };
+}
+
 export function calculateVideoBitrate(
   targetSizeBytes: number,
   durationSeconds: number,

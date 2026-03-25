@@ -6,7 +6,16 @@ import {
   TARGET_CEILING_MIB,
   TARGET_EFFECTIVE_BYTES,
   TARGET_CEILING_BYTES,
+  targetBytesFromCeilingMiB,
 } from '../src/bitrate.ts';
+
+describe('targetBytesFromCeilingMiB', () => {
+  it('matches default 9.6 / 9.8 constants when ceiling is 9.8', () => {
+    const { effectiveBytes, ceilingBytes } = targetBytesFromCeilingMiB(9.8);
+    assert.strictEqual(effectiveBytes, TARGET_EFFECTIVE_BYTES);
+    assert.strictEqual(ceilingBytes, TARGET_CEILING_BYTES);
+  });
+});
 
 describe('calculateVideoBitrate', () => {
   it('returns 1246 kbps for a 60-second video with 96 kbps audio at 9.6 MiB target', () => {
