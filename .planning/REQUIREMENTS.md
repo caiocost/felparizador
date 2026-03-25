@@ -105,8 +105,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENC-06 | Phase 3 | Pending |
 | ENC-07 | Phase 3 | Pending |
 | UX-01 | Phase 3 | Pending |
-| UX-02 | Phase 3 | Pending |
-| UX-03 | Phase 3 | Pending |
+| UX-02 | Phase 4 | Pending |
+| UX-03 | Phase 4 | Pending |
 | UX-04 | Phase 3 | Pending |
 | UX-05 | Phase 4 | Pending |
 | VER-01 | Phase 3 | Pending |
@@ -122,8 +122,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 **Coverage:**
 - v1 requirements: 29 total
 - Mapped to phases: 29
-- Unmapped: 0 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-25*
-*Last updated: 2026-03-25 after initial definition*
+*Last updated: 2026-03-25 after roadmap creation*
