@@ -7,11 +7,22 @@ export {
   TARGET_CEILING_BYTES,
   MIB_TO_BYTES,
   targetBytesFromCeilingMiB,
-} from './bitrate.js';
-export { FfmpegToolError, InputValidationError, FfmpegNotFoundError, EncodingFailedError, OutputOversizeError } from './errors.js';
-export { probeVideo, resolveFfprobePath, resolveFfmpegPath, ffmpegInstallMessage } from './probe.js';
-export type { ProbeResult } from './probe.js';
-export { encodeVideo } from './encode.js';
-export type { EncodeOptions } from './encode.js';
-export { verifyOutput } from './verify.js';
-export type { VerifyResult, VerifyOptions } from './verify.js';
+} from "./bitrate.js";
+export {
+  FfmpegToolError,
+  InputValidationError,
+  FfmpegNotFoundError,
+  EncodingFailedError,
+  OutputOversizeError,
+} from "./errors.js";
+export {
+  probeVideo,
+  resolveFfprobePath,
+  resolveFfmpegPath,
+  ffmpegInstallMessage,
+} from "./probe.js";
+export type { ProbeResult } from "./probe.js";
+export { encodeVideo } from "./encode.js";
+export type { EncodeOptions, EncodeProgressEvent } from "./encode.js";
+export { verifyOutput } from "./verify.js";
+export type { VerifyResult, VerifyOptions } from "./verify.js";

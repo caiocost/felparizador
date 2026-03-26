@@ -1,20 +1,17 @@
-import { access, constants } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { parseArgs } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { access, constants } from "node:fs/promises";
+import { resolve } from "node:path";
+import { parseArgs } from "node:util";
+import { fileURLToPath } from "node:url";
 
-import {
-  calculateVideoBitrate,
-  targetBytesFromCeilingMiB,
-} from './bitrate.js';
-import { encodeVideo } from './encode.js';
+import { calculateVideoBitrate, targetBytesFromCeilingMiB } from "./bitrate.js";
+import { encodeVideo } from "./encode.js";
 import {
   EncodingFailedError,
   FfmpegToolError,
   InputValidationError,
-} from './errors.js';
-import { probeVideo } from './probe.js';
-import { verifyOutput } from './verify.js';
+} from "./errors.js";
+import { probeVideo } from "./probe.js";
+import { verifyOutput } from "./verify.js";
 
 function printHelp(): void {
   console.log(`ffmpeg10mb — compress video to ~9.8 MiB MP4 for Discord
@@ -38,20 +35,20 @@ Examples:
 }
 
 function defaultOutputPath(inputPath: string): string {
-  const stem = inputPath.replace(/\.[^.\\/]+$/i, '');
+  const stem = inputPath.replace(/\.[^.\\/]+$/i, "");
   return `${stem}_discord.mp4`;
 }
 
 function humanizeEncodingError(message: string): string {
   const s = message.toLowerCase();
-  if (s.includes('permission denied')) {
-    return 'Permission denied — check that the output path is writable.';
+  if (s.includes("permission denied")) {
+    return "Permission denied — check that the output path is writable.";
   }
-  if (s.includes('no such file') || s.includes('invalid data')) {
-    return 'Could not read input or write output — check paths and that the file is valid media.';
+  if (s.includes("no such file") || s.includes("invalid data")) {
+    return "Could not read input or write output — check paths and that the file is valid media.";
   }
-  if (s.includes('codec') && s.includes('not found')) {
-    return 'A required codec was not found in this FFmpeg build.';
+  if (s.includes("codec") && s.includes("not found")) {
+    return "A required codec was not found in this FFmpeg build.";
   }
   return message;
 }
@@ -60,12 +57,12 @@ async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
     options: {
-      output: { type: 'string', short: 'o' },
-      'no-audio': { type: 'boolean', default: false },
-      target: { type: 'string' },
-      'audio-bitrate': { type: 'string' },
-      'dry-run': { type: 'boolean', default: false },
-      help: { type: 'boolean', short: 'h', default: false },
+      output: { type: "string", short: "o" },
+      "no-audio": { type: "boolean", default: false },
+      target: { type: "string" },
+      "audio-bitrate": { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -78,7 +75,7 @@ async function main(): Promise<void> {
 
   const inputPath = positionals[0];
   if (!inputPath) {
-    console.error('Error: missing input file. Use --help for usage.');
+    console.error("Error: missing input file. Use --help for usage.");
     process.exit(1);
   }
 
@@ -86,39 +83,39 @@ async function main(): Promise<void> {
   const onSignal = (): void => {
     ac.abort();
   };
-  process.on('SIGINT', onSignal);
-  process.on('SIGTERM', onSignal);
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
 
   try {
     const outputFlag =
-      typeof values.output === 'string' ? values.output : undefined;
+      typeof values.output === "string" ? values.output : undefined;
     const outputPath =
       outputFlag ?? positionals[1] ?? defaultOutputPath(inputPath);
 
     const targetStr =
-      typeof values.target === 'string' ? values.target : undefined;
-    const ceilingMiB = parseFloat(targetStr ?? '9.8');
+      typeof values.target === "string" ? values.target : undefined;
+    const ceilingMiB = parseFloat(targetStr ?? "9.8");
     if (Number.isNaN(ceilingMiB) || ceilingMiB <= 0.2) {
       throw new InputValidationError(
-        `--target must be a number greater than 0.2 (got ${targetStr ?? 'undefined'})`,
+        `--target must be a number greater than 0.2 (got ${targetStr ?? "undefined"})`,
       );
     }
 
     const { effectiveBytes, ceilingBytes } =
       targetBytesFromCeilingMiB(ceilingMiB);
     const audioBrStr =
-      typeof values['audio-bitrate'] === 'string'
-        ? values['audio-bitrate']
+      typeof values["audio-bitrate"] === "string"
+        ? values["audio-bitrate"]
         : undefined;
-    const audioBitrateKbps = parseInt(audioBrStr ?? '96', 10);
+    const audioBitrateKbps = parseInt(audioBrStr ?? "96", 10);
     if (Number.isNaN(audioBitrateKbps) || audioBitrateKbps < 0) {
       throw new InputValidationError(
-        `--audio-bitrate must be a non-negative integer (got ${audioBrStr ?? 'default'})`,
+        `--audio-bitrate must be a non-negative integer (got ${audioBrStr ?? "default"})`,
       );
     }
 
-    const dryRun = values['dry-run'] === true;
-    const noAudio = values['no-audio'] === true;
+    const dryRun = values["dry-run"] === true;
+    const noAudio = values["no-audio"] === true;
 
     if (!dryRun) {
       try {
@@ -129,7 +126,7 @@ async function main(): Promise<void> {
       } catch (e) {
         if (e instanceof InputValidationError) throw e;
         const code = (e as NodeJS.ErrnoException).code;
-        if (code !== 'ENOENT') throw e;
+        if (code !== "ENOENT") throw e;
       }
     }
 
@@ -183,8 +180,8 @@ async function main(): Promise<void> {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
   } finally {
-    process.off('SIGINT', onSignal);
-    process.off('SIGTERM', onSignal);
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
   }
 }
 

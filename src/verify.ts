@@ -5,11 +5,18 @@ import { OutputOversizeError } from './errors.js';
 
 export interface VerifyResult {
   sizeBytes: number;
+  /** True when over target ceiling but still within flexibleCeilingBytes (e.g. two-pass overshoot) */
+  warnAboveTarget?: boolean;
 }
 
 export interface VerifyOptions {
   ceilingBytes?: number;
   ceilingMiB?: number;
+  /**
+   * If set, files between ceilingBytes and this value succeed with warnAboveTarget
+   * instead of throwing (strict ceiling is still the primary target).
+   */
+  flexibleCeilingBytes?: number;
 }
 
 /**
@@ -23,6 +30,10 @@ export async function verifyOutput(
   const ceilingMiB = options.ceilingMiB ?? TARGET_CEILING_MIB;
   const s = await stat(outputPath);
   if (s.size > ceilingBytes) {
+    const flex = options.flexibleCeilingBytes;
+    if (flex !== undefined && s.size <= flex) {
+      return { sizeBytes: s.size, warnAboveTarget: true };
+    }
     throw new OutputOversizeError(
       `Output exceeds ${ceilingMiB} MiB ceiling (${s.size} bytes > ${ceilingBytes} bytes)`,
     );

@@ -1,18 +1,25 @@
-import { execa } from 'execa';
-import { randomUUID } from 'node:crypto';
-import { mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { createInterface } from 'node:readline';
+import { execa } from "execa";
+import { randomUUID } from "node:crypto";
+import { mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createInterface } from "node:readline";
 
-import ora from 'ora';
+import ora from "ora";
 
+import { calculateVideoBitrate, TARGET_EFFECTIVE_BYTES } from "./bitrate.js";
+import { EncodingFailedError, FfmpegNotFoundError } from "./errors.js";
 import {
-  calculateVideoBitrate,
-  TARGET_EFFECTIVE_BYTES,
-} from './bitrate.js';
-import { EncodingFailedError, FfmpegNotFoundError } from './errors.js';
-import { ffmpegInstallMessage, probeVideo, resolveFfmpegPath } from './probe.js';
+  ffmpegInstallMessage,
+  probeVideo,
+  resolveFfmpegPath,
+} from "./probe.js";
+
+export type EncodeProgressEvent = {
+  phase: "pass1" | "pass2";
+  /** null = indeterminate (pass 1 start), 0–100 for pass 2 */
+  percent: number | null;
+};
 
 export interface EncodeOptions {
   ffmpegPath?: string;
@@ -22,10 +29,14 @@ export interface EncodeOptions {
   targetEffectiveBytes?: number;
   /** Strip audio even if source has an audio stream */
   forceNoAudio?: boolean;
+  /** Skip terminal spinner (Electron / programmatic use) */
+  quiet?: boolean;
+  /** Fired during encode when `quiet` is true (and optional alongside CLI spinner) */
+  onProgress?: (evt: EncodeProgressEvent) => void;
 }
 
 function nullDevice(): string {
-  return process.platform === 'win32' ? 'NUL' : '/dev/null';
+  return process.platform === "win32" ? "NUL" : "/dev/null";
 }
 
 function parseTimeSeconds(line: string): number | null {
@@ -63,78 +74,91 @@ export async function encodeVideo(
   );
 
   const workDir = join(tmpdir(), `ffmpeg10mb-${randomUUID()}`);
-  const passLogBase = join(workDir, 'pass');
+  const passLogBase = join(workDir, "pass");
   await mkdir(workDir, { recursive: true });
 
   const pass1Args = [
-    '-hide_banner',
-    '-y',
-    '-i',
+    "-hide_banner",
+    "-y",
+    "-i",
     inputPath,
-    '-c:v',
-    'libx264',
-    '-preset',
-    'medium',
-    '-pix_fmt',
-    'yuv420p',
-    '-b:v',
+    "-c:v",
+    "libx264",
+    "-preset",
+    "medium",
+    "-pix_fmt",
+    "yuv420p",
+    "-b:v",
     `${videoKbps}k`,
-    '-pass',
-    '1',
-    '-passlogfile',
+    "-pass",
+    "1",
+    "-passlogfile",
     passLogBase,
-    '-an',
-    '-f',
-    'null',
+    "-an",
+    "-f",
+    "null",
     nullDevice(),
   ];
 
   const pass2Args = [
-    '-hide_banner',
-    '-y',
-    '-i',
+    "-hide_banner",
+    "-y",
+    "-i",
     inputPath,
-    '-c:v',
-    'libx264',
-    '-preset',
-    'medium',
-    '-pix_fmt',
-    'yuv420p',
-    '-b:v',
+    "-c:v",
+    "libx264",
+    "-preset",
+    "medium",
+    "-pix_fmt",
+    "yuv420p",
+    "-b:v",
     `${videoKbps}k`,
-    '-pass',
-    '2',
-    '-passlogfile',
+    "-pass",
+    "2",
+    "-passlogfile",
     passLogBase,
-    ...(useAudio ? ['-c:a', 'aac', '-b:a', `${audioKbps}k`] : ['-an']),
-    '-movflags',
-    '+faststart',
+    ...(useAudio ? ["-c:a", "aac", "-b:a", `${audioKbps}k`] : ["-an"]),
+    "-movflags",
+    "+faststart",
     outputPath,
   ];
 
-  let spinner = ora({ text: 'Pass 1 (analysis)…', color: 'cyan' }).start();
+  const quiet = options.quiet === true;
+  const onProgress = options.onProgress;
+  let spinner = quiet
+    ? null
+    : ora({ text: "Pass 1 (analysis)…", color: "cyan" }).start();
 
   try {
+    if (quiet) onProgress?.({ phase: "pass1", percent: null });
     try {
       await execa(ffmpegPath, pass1Args, {
         cancelSignal: options.signal,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (err) {
-      spinner.fail('Pass 1 failed');
+      spinner?.fail("Pass 1 failed");
       throw new EncodingFailedError(
         err instanceof Error ? err.message : String(err),
       );
     }
-    spinner.succeed('Pass 1 complete');
+    if (quiet) {
+      onProgress?.({ phase: "pass1", percent: 100 });
+    } else {
+      spinner?.succeed("Pass 1 complete");
+    }
 
-    spinner = ora({ text: 'Pass 2 (encode)…', color: 'cyan' }).start();
+    if (!quiet) {
+      spinner = ora({ text: "Pass 2 (encode)…", color: "cyan" }).start();
+    } else {
+      onProgress?.({ phase: "pass2", percent: 0 });
+    }
 
     const subprocess = execa(ffmpegPath, pass2Args, {
       cancelSignal: options.signal,
-      stdin: 'ignore',
-      stdout: 'ignore',
-      stderr: 'pipe',
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "pipe",
       reject: false,
     });
 
@@ -143,25 +167,33 @@ export async function encodeVideo(
 
     if (subprocess.stderr) {
       const rl = createInterface({ input: subprocess.stderr });
-      rl.on('line', (line) => {
+      rl.on("line", (line) => {
         const t = parseTimeSeconds(line);
         if (t === null) return;
         const pct = Math.min(100, (t / duration) * 100);
         if (Math.floor(pct) !== Math.floor(lastPct)) {
           lastPct = pct;
-          spinner.text = `Pass 2 (encode)… ${pct.toFixed(0)}%`;
+          if (quiet) {
+            onProgress?.({ phase: "pass2", percent: pct });
+          } else if (spinner) {
+            spinner.text = `Pass 2 (encode)… ${pct.toFixed(0)}%`;
+          }
         }
       });
     }
 
     const result = await subprocess;
     if (result.exitCode !== 0) {
-      spinner.fail('Pass 2 failed');
+      spinner?.fail("Pass 2 failed");
       throw new EncodingFailedError(
         result.stderr?.slice(-2000) ?? `ffmpeg exited ${result.exitCode}`,
       );
     }
-    spinner.succeed('Pass 2 complete');
+    if (quiet) {
+      onProgress?.({ phase: "pass2", percent: 100 });
+    } else {
+      spinner?.succeed("Pass 2 complete");
+    }
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ffmpeg10mb</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <h1>ffmpeg10mb — da galera do Discord</h1>
+        <p class="tagline">
+          Arraste vídeos aqui · lote · até ~9,8 MiB
+        </p>
+      </header>
+
+      <section
+        class="dropzone"
+        id="dropzone"
+        tabindex="0"
+        aria-label="Área para soltar arquivos de vídeo"
+      >
+        <p class="dropzone__hint">Solte os arquivos ou clique para adicionar</p>
+        <p class="dropzone__sub">Vários arquivos — processados em ordem</p>
+        <input
+          type="file"
+          id="fileInput"
+          accept="video/*,audio/*"
+          multiple
+          hidden
+        />
+      </section>
+
+      <div id="progressWrap" class="progress-wrap" hidden>
+        <div class="progress-head">
+          <span>Progresso geral</span>
+          <span id="progressLabel" class="progress-label">0%</span>
+        </div>
+        <div
+          class="progress-track"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+          id="progressTrack"
+        >
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div class="layout">
+        <div class="panel panel--preview">
+          <h2>Pré-visualização</h2>
+          <div class="preview-wrap">
+            <video id="preview" controls playsinline></video>
+            <p id="previewEmpty" class="preview-empty">Nenhum arquivo selecionado</p>
+          </div>
+        </div>
+
+        <div class="panel panel--queue">
+          <h2>Fila <span id="queueCount" class="badge">0</span></h2>
+          <ul id="queueList" class="queue-list"></ul>
+          <div class="options">
+            <label class="field">
+              <span>Limite alvo (MiB)</span>
+              <input
+                type="number"
+                id="ceilingMiB"
+                value="9.8"
+                min="0.3"
+                step="0.1"
+              />
+            </label>
+            <label class="field checkbox">
+              <input type="checkbox" id="noAudio" />
+              <span>Sem áudio na saída</span>
+            </label>
+            <label class="field">
+              <span>Taxa de áudio (kbps)</span>
+              <input
+                type="number"
+                id="audioKbps"
+                value="96"
+                min="0"
+                max="320"
+              />
+            </label>
+            <div class="field field--row">
+              <span>Pasta de saída</span>
+              <div class="row">
+                <input
+                  type="text"
+                  id="outputDir"
+                  readonly
+                  placeholder="Mesma pasta de cada arquivo de entrada"
+                />
+                <button type="button" id="pickDir" class="btn btn--ghost">
+                  Procurar…
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="button" id="clearBtn" class="btn btn--ghost">
+              Limpar fila
+            </button>
+            <button
+              type="button"
+              id="encodeBtn"
+              class="btn btn--primary"
+              disabled
+            >
+              Codificar fila
+            </button>
+          </div>
+          <div id="log" class="log" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
