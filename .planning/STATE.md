@@ -75,8 +75,15 @@ None yet.
 - Discord's exact byte threshold (decimal 10MB vs binary 10MiB) is unverified empirically — validate with test uploads during Phase 3
 - Container overhead constant (9.6 MiB target) derived from literature; confirm empirically during Phase 3 across varied durations
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260331-o3e | atualiza o readme desse projeto pra o que ele ta agora, com os comandos etc | 2026-03-31 | 71282c9 | [260331-o3e-atualiza-o-readme-desse-projeto-pra-o-qu](.planning/quick/260331-o3e-atualiza-o-readme-desse-projeto-pra-o-qu/) |
+
 ## Session Continuity
 
+Last activity: 2026-03-31 - Completed quick task 260331-o3e: atualiza o readme desse projeto pra o que ele ta agora, com os comandos etc
 Last session: 2026-03-25T22:17:08.551Z
 Stopped at: Completed 01-foundation-02-PLAN.md
 Resume file: None
