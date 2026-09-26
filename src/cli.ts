@@ -14,7 +14,7 @@ import { probeVideo } from "./probe.js";
 import { verifyOutput } from "./verify.js";
 
 function printHelp(): void {
-  console.log(`ffmpeg10mb — compress video to ~9.8 MiB MP4 for Discord
+  console.log(`felparizador — compress video to ~9.8 MiB MP4 for Discord
 
 Usage:
   node --import tsx/esm src/cli.ts [options] <input> [output]

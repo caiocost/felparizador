@@ -1,5 +1,5 @@
 /**
- * Base error class for all ffmpeg10mb tool errors.
+ * Base error class for all felparizador tool errors.
  * Each subclass carries a numeric exitCode for process.exit().
  */
 export class FfmpegToolError extends Error {

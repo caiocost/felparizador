@@ -27,7 +27,7 @@ describe('encodeVideo — frame count', () => {
     // and without passthrough ffmpeg duplicates frames up to that nominal rate — which made
     // encodes ~11x slower, broke two-pass ("2nd pass has more frames than 1st pass"), and
     // blew past the size ceiling.
-    const dir = await mkdtemp(join(tmpdir(), 'ffmpeg10mb-test-'));
+    const dir = await mkdtemp(join(tmpdir(), 'felparizador-test-'));
     try {
       const out = join(dir, 'out.mp4');
       await encodeVideo(SHORT_MP4, out, { noCeiling: true, quiet: true });
@@ -56,7 +56,7 @@ describe('encodeVideo — frame count', () => {
 
 describe('encodeVideo — noCeiling', () => {
   it('produces a larger file at a lower CRF, unconstrained by any size target', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'ffmpeg10mb-test-'));
+    const dir = await mkdtemp(join(tmpdir(), 'felparizador-test-'));
     try {
       const lowQuality = join(dir, 'crf40.mp4');
       const highQuality = join(dir, 'crf10.mp4');

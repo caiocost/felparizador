@@ -1,4 +1,4 @@
-# ffmpeg10mb
+# Felparizador (formerly ffmpeg10mb)
 
 ## What This Is
 
@@ -36,7 +36,7 @@ Any video in, 9.8MB MP4 out — guaranteed to be sendable on Discord.
 - Two-pass encoding is the standard approach to hit exact file size targets
 - Target bitrate = (target_size_bits - audio_bits) / duration_seconds
 - Discord's free upload limit is 10MB; 9.8MB leaves ~200KB safety margin
-- Project lives at D:/GitHub/ffmpeg10mb
+- Project lives at D:/GitHub/felparizador
 
 ## Constraints
 

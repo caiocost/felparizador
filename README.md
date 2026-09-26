@@ -1,4 +1,4 @@
-# ffmpeg10mb
+# Felparizador
 
 Compress any video to under 10 MB for Discord uploads.
 
@@ -6,7 +6,7 @@ Takes any video input and outputs an MP4 guaranteed under 9.8 MiB — small enou
 
 ## Download (Windows)
 
-Grab **`Felparizador.exe`** from the [latest release](https://github.com/caiocost/ffmpeg10mb/releases/latest) and double-click it — no install, no Node, no ffmpeg needed (ffmpeg and ffprobe ship inside). It's a portable build, so it takes a few seconds to unpack on each launch.
+Grab **`Felparizador.exe`** from the [latest release](https://github.com/caiocost/felparizador/releases/latest) and double-click it — no install, no Node, no ffmpeg needed (ffmpeg and ffprobe ship inside). It's a portable build, so it takes a few seconds to unpack on each launch.
 
 ## What it does
 
@@ -25,8 +25,8 @@ Grab **`Felparizador.exe`** from the [latest release](https://github.com/caiocos
 ## Installation
 
 ```sh
-git clone https://github.com/your-username/ffmpeg10mb.git
-cd ffmpeg10mb
+git clone https://github.com/caiocost/felparizador.git
+cd felparizador
 npm install
 ```
 
@@ -105,7 +105,7 @@ Produces `release/Felparizador.exe` (portable, single file) and `release/win-unp
 Install as a local dependency or import directly from source using `tsx`.
 
 ```ts
-import { probeVideo, encodeVideo, verifyOutput, calculateVideoBitrate } from "ffmpeg10mb";
+import { probeVideo, encodeVideo, verifyOutput, calculateVideoBitrate } from "felparizador";
 ```
 
 ### Key exports
@@ -136,7 +136,7 @@ interface EncodeOptions {
 ### Example
 
 ```ts
-import { probeVideo, encodeVideo, verifyOutput } from "ffmpeg10mb";
+import { probeVideo, encodeVideo, verifyOutput } from "felparizador";
 
 const probe = await probeVideo("input.mov");
 console.log(`Duration: ${probe.durationSeconds.toFixed(1)}s`);

@@ -204,7 +204,7 @@ export async function encodeVideo(
     return;
   }
 
-  const workDir = join(tmpdir(), `ffmpeg10mb-${randomUUID()}`);
+  const workDir = join(tmpdir(), `felparizador-${randomUUID()}`);
   const passLogBase = join(workDir, "pass");
   await mkdir(workDir, { recursive: true });
 
