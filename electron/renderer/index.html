@@ -4,124 +4,239 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      content="default-src 'self'; media-src 'self' blob:; img-src 'self' data:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ffmpeg10mb</title>
+    <title>Felparizador</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app">
-      <header class="header">
-        <h1>ffmpeg10mb — da galera do Discord</h1>
-        <p class="tagline">
-          Arraste vídeos aqui · lote · até ~9,8 MiB
-        </p>
-      </header>
+    <div class="aurora" aria-hidden="true">
+      <span class="aurora__blob aurora__blob--a"></span>
+      <span class="aurora__blob aurora__blob--b"></span>
+      <span class="aurora__blob aurora__blob--c"></span>
+    </div>
 
-      <section
-        class="dropzone"
-        id="dropzone"
-        tabindex="0"
-        aria-label="Área para soltar arquivos de vídeo"
-      >
-        <p class="dropzone__hint">Solte os arquivos ou clique para adicionar</p>
-        <p class="dropzone__sub">Vários arquivos — processados em ordem</p>
-        <input
-          type="file"
-          id="fileInput"
-          accept="video/*,audio/*"
-          multiple
-          hidden
-        />
-      </section>
-
-      <div id="progressWrap" class="progress-wrap" hidden>
-        <div class="progress-head">
-          <span>Progresso geral</span>
-          <span id="progressLabel" class="progress-label">0%</span>
-        </div>
-        <div
-          class="progress-track"
-          role="progressbar"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-valuenow="0"
-          id="progressTrack"
-        >
-          <div id="progressFill" class="progress-fill"></div>
-        </div>
+    <header class="titlebar">
+      <div class="brand">
+        <img class="brand__mark" src="./felpa.png" alt="" aria-hidden="true" />
+        <span class="brand__name">Felpa<b>rizador</b></span>
+        <span class="brand__tag">da galera do Discord</span>
       </div>
+    </header>
 
-      <div class="layout">
-        <div class="panel panel--preview">
-          <h2>Pré-visualização</h2>
+    <main class="app">
+      <section class="col col--stage">
+        <div
+          class="dropzone"
+          id="dropzone"
+          tabindex="0"
+          role="button"
+          aria-label="Área para soltar arquivos de vídeo"
+        >
+          <div class="dropzone__inner">
+            <div class="dropzone__icon" aria-hidden="true">
+              <img src="./felpa.png" alt="" />
+              <span class="dropzone__arrow">↓</span>
+            </div>
+            <div>
+              <p class="dropzone__hint">Solta os vídeos aqui</p>
+              <p class="dropzone__sub">
+                ou clica pra escolher · vários de uma vez · processados em ordem
+              </p>
+            </div>
+          </div>
+          <input
+            type="file"
+            id="fileInput"
+            accept="video/*,audio/*"
+            multiple
+            hidden
+          />
+        </div>
+
+        <div class="card card--preview">
+          <div class="card__head">
+            <h2>Pré-visualização</h2>
+            <span id="previewName" class="card__meta"></span>
+          </div>
           <div class="preview-wrap">
             <video id="preview" controls playsinline></video>
-            <p id="previewEmpty" class="preview-empty">Nenhum arquivo selecionado</p>
-          </div>
-        </div>
-
-        <div class="panel panel--queue">
-          <h2>Fila <span id="queueCount" class="badge">0</span></h2>
-          <ul id="queueList" class="queue-list"></ul>
-          <div class="options">
-            <label class="field">
-              <span>Limite alvo (MiB)</span>
-              <input
-                type="number"
-                id="ceilingMiB"
-                value="9.8"
-                min="0.3"
-                step="0.1"
-              />
-            </label>
-            <label class="field checkbox">
-              <input type="checkbox" id="noAudio" />
-              <span>Sem áudio na saída</span>
-            </label>
-            <label class="field">
-              <span>Taxa de áudio (kbps)</span>
-              <input
-                type="number"
-                id="audioKbps"
-                value="96"
-                min="0"
-                max="320"
-              />
-            </label>
-            <div class="field field--row">
-              <span>Pasta de saída</span>
-              <div class="row">
-                <input
-                  type="text"
-                  id="outputDir"
-                  readonly
-                  placeholder="Mesma pasta de cada arquivo de entrada"
-                />
-                <button type="button" id="pickDir" class="btn btn--ghost">
-                  Procurar…
-                </button>
+            <div id="previewEmpty" class="preview-empty">
+              <img class="preview-empty__felpa" src="./felpa.png" alt="" />
+              <span>Nenhum arquivo selecionado</span>
+            </div>
+            <div id="loadingScreen" class="loading" hidden>
+              <div class="loading__stage" id="loadingStage">
+                <svg class="loading__ring" viewBox="0 0 200 200" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#ff4d8d" />
+                      <stop offset="0.45" stop-color="#9d6bff" />
+                      <stop offset="0.8" stop-color="#3ee0ff" />
+                      <stop offset="1" stop-color="#c6ff4a" />
+                    </linearGradient>
+                  </defs>
+                  <circle class="loading__ring-track" cx="100" cy="100" r="92" />
+                  <circle id="ringFill" class="loading__ring-fill" cx="100" cy="100" r="92" pathLength="100" />
+                </svg>
+                <div class="loading__spin" aria-hidden="true"></div>
+                <img class="loading__felpa" id="loadingFelpa" src="./felpa.png" alt="" />
+              </div>
+              <div class="loading__info">
+                <p id="loadingTitle" class="loading__title">Felparizando…</p>
+                <p id="loadingSub" class="loading__sub mono"></p>
+              </div>
+              <div class="loading__tip">
+                <span class="loading__tag">DICA</span>
+                <p id="tipText" class="loading__tip-text"></p>
               </div>
             </div>
           </div>
-          <div class="actions">
-            <button type="button" id="clearBtn" class="btn btn--ghost">
-              Limpar fila
-            </button>
-            <button
-              type="button"
-              id="encodeBtn"
-              class="btn btn--primary"
-              disabled
-            >
-              Codificar fila
-            </button>
-          </div>
-          <div id="log" class="log" aria-live="polite"></div>
         </div>
-      </div>
-    </div>
+
+        <div class="card card--log">
+          <div class="card__head">
+            <h2>Saída</h2>
+            <span class="card__meta mono">ffmpeg · x264</span>
+          </div>
+          <div id="log" class="log" aria-live="polite">
+            <div class="log__idle">Aguardando o próximo lote…</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="col col--control">
+        <div class="card card--queue">
+          <div class="card__head">
+            <h2>Fila <span id="queueCount" class="count">0</span></h2>
+            <button type="button" id="clearBtn" class="link-btn">Limpar</button>
+          </div>
+          <ul id="queueList" class="queue-list"></ul>
+          <p id="queueEmpty" class="queue-empty">
+            A fila tá vazia. Solta uns vídeos ali do lado.
+          </p>
+        </div>
+
+        <div class="card card--options">
+          <div class="card__head">
+            <h2>Ajustes</h2>
+          </div>
+
+          <div class="segmented" role="radiogroup" aria-label="Modo">
+            <label class="segmented__opt">
+              <input type="radio" name="mode" id="fitCeiling" checked />
+              <span>Caber no limite</span>
+            </label>
+            <label class="segmented__opt">
+              <input type="radio" name="mode" id="noCeiling" />
+              <span>Só converter</span>
+            </label>
+            <span class="segmented__thumb" aria-hidden="true"></span>
+          </div>
+
+          <div class="field" id="ceilingField">
+            <div class="field__label">
+              <span>Limite alvo</span>
+              <span class="field__unit">MiB</span>
+            </div>
+            <div class="presets" id="presets">
+              <button type="button" class="chip chip--pink" data-mib="9.8">
+                Discord <b>10</b>
+              </button>
+              <button type="button" class="chip chip--violet" data-mib="49">
+                Nitro Basic <b>50</b>
+              </button>
+              <button type="button" class="chip chip--cyan" data-mib="490">
+                Nitro <b>500</b>
+              </button>
+            </div>
+            <input
+              type="number"
+              id="ceilingMiB"
+              class="input"
+              value="9.8"
+              min="0.3"
+              step="0.1"
+              aria-label="Limite alvo em MiB"
+            />
+          </div>
+
+          <div class="field" id="crfField" hidden>
+            <div class="field__label">
+              <span>Qualidade CRF</span>
+              <span class="field__unit">menor = melhor</span>
+            </div>
+            <div class="range-row">
+              <input type="range" id="crfRange" min="0" max="51" value="23" aria-hidden="true" tabindex="-1" />
+              <input type="number" id="crf" class="input input--sm" value="23" min="0" max="51" aria-label="CRF" />
+            </div>
+          </div>
+
+          <div class="field field--inline">
+            <label class="switch">
+              <input type="checkbox" id="noAudio" />
+              <span class="switch__track"><span class="switch__knob"></span></span>
+              <span>Tirar o áudio</span>
+            </label>
+            <label class="inline-num" id="audioField">
+              <input
+                type="number"
+                id="audioKbps"
+                class="input input--sm"
+                value="96"
+                min="0"
+                max="320"
+                aria-label="Taxa de áudio em kbps"
+              />
+              <span class="field__unit">kbps</span>
+            </label>
+          </div>
+
+          <div class="field">
+            <div class="field__label"><span>Pasta de saída</span></div>
+            <div class="row">
+              <input
+                type="text"
+                id="outputDir"
+                class="input"
+                readonly
+                placeholder="Mesma pasta de cada vídeo"
+              />
+              <button type="button" id="pickDir" class="btn btn--ghost">
+                Procurar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="go">
+          <div
+            id="progressWrap"
+            class="go__status"
+            role="progressbar"
+            aria-label="Progresso geral"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            hidden
+          >
+            <span id="progressStep">Preparando…</span>
+            <span id="progressLabel" class="mono">0%</span>
+          </div>
+          <button
+            type="button"
+            id="encodeBtn"
+            class="btn btn--go"
+            disabled
+          >
+            <span id="progressFill" class="btn--go__fill"></span>
+            <span id="encodeLabel" class="btn--go__label">Felparizar fila</span>
+            <span class="btn--go__arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </section>
+    </main>
     <script src="./app.js" type="module"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-import { access, constants } from "node:fs/promises";
+import { access, constants, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -24,12 +24,16 @@ Options:
   -o, --output <path>     Output file (default: <input_stem>_discord.mp4)
       --no-audio          Strip audio from output
       --target <MiB>      Size ceiling in binary MiB (default: 9.8)
+      --no-ceiling        Convert only: quality-driven CRF, no size limit
+      --crf <n>           Quality for --no-ceiling, 0-51 (default: 23; lower = better)
       --audio-bitrate <k> AAC bitrate when source has audio (default: 96)
       --dry-run           Show probe + projected video bitrate; no encode
 
 Examples:
   node --import tsx/esm src/cli.ts video.mp4
   node --import tsx/esm src/cli.ts -o out.mp4 --no-audio clip.mov
+  node --import tsx/esm src/cli.ts --no-ceiling recording.webm
+  node --import tsx/esm src/cli.ts --no-ceiling --crf 18 recording.webm
   node --import tsx/esm src/cli.ts --dry-run clip.mov
 `);
 }
@@ -60,6 +64,8 @@ async function main(): Promise<void> {
       output: { type: "string", short: "o" },
       "no-audio": { type: "boolean", default: false },
       target: { type: "string" },
+      "no-ceiling": { type: "boolean", default: false },
+      crf: { type: "string" },
       "audio-bitrate": { type: "string" },
       "dry-run": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
@@ -116,6 +122,15 @@ async function main(): Promise<void> {
 
     const dryRun = values["dry-run"] === true;
     const noAudio = values["no-audio"] === true;
+    const noCeiling = values["no-ceiling"] === true;
+
+    const crfStr = typeof values.crf === "string" ? values.crf : undefined;
+    const crf = parseInt(crfStr ?? "23", 10);
+    if (Number.isNaN(crf) || crf < 0 || crf > 51) {
+      throw new InputValidationError(
+        `--crf must be an integer between 0 and 51 (got ${crfStr ?? "default"})`,
+      );
+    }
 
     if (!dryRun) {
       try {
@@ -134,6 +149,14 @@ async function main(): Promise<void> {
     console.log(
       `Input: ${probe.durationSeconds.toFixed(1)}s, audio: ${probe.hasAudio}, ${probe.widthPx}x${probe.heightPx}`,
     );
+
+    if (dryRun && noCeiling) {
+      const audioKbps = probe.hasAudio && !noAudio ? audioBitrateKbps : 0;
+      console.log(
+        `Dry-run: no ceiling → CRF ${crf} single-pass (audio ${audioKbps} kbps), output size unbounded`,
+      );
+      return;
+    }
 
     if (dryRun) {
       const useAudio = probe.hasAudio && !noAudio;
@@ -154,12 +177,14 @@ async function main(): Promise<void> {
       targetEffectiveBytes: effectiveBytes,
       forceNoAudio: noAudio,
       audioBitrateKbps,
+      noCeiling,
+      crf,
     });
 
-    const { sizeBytes } = await verifyOutput(outputPath, {
-      ceilingBytes,
-      ceilingMiB,
-    });
+    // With --no-ceiling there is no size target to enforce; just report what came out.
+    const { sizeBytes } = noCeiling
+      ? { sizeBytes: (await stat(outputPath)).size }
+      : await verifyOutput(outputPath, { ceilingBytes, ceilingMiB });
     const orig = probe.fileSizeBytes;
     console.log(
       `Done: ${outputPath} — ${(sizeBytes / 1_048_576).toFixed(2)} MiB (was ${(orig / 1_048_576).toFixed(2)} MiB)`,

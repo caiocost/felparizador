@@ -8,6 +8,7 @@ import { FfmpegNotFoundError, InputValidationError } from '../src/errors.ts';
 const FIXTURE_DIR = resolve(import.meta.dirname, 'fixtures');
 const SHORT_MP4 = resolve(FIXTURE_DIR, 'short.mp4');
 const VIDEO_ONLY_MP4 = resolve(FIXTURE_DIR, 'video-only.mp4');
+const NO_DURATION_WEBM = resolve(FIXTURE_DIR, 'no-duration.webm');
 
 describe('resolveFfprobePath', () => {
   it('returns a string path when ffprobe is on PATH', async () => {
@@ -58,5 +59,17 @@ describe('probeVideo — INPUT-03', () => {
     assert.strictEqual(r.hasAudio, false);
     assert.strictEqual(r.audioBitrateKbps, 0);
     assert.ok(Math.abs(r.durationSeconds - 10.0) < 0.5);
+  });
+
+  it('falls back to packet timestamps when the container header has no duration', async () => {
+    // WebM written by browser MediaRecorder leaves the Segment duration unset;
+    // the fixture reproduces that by muxing to a non-seekable stream.
+    const r = await probeVideo(NO_DURATION_WEBM);
+    assert.ok(
+      Math.abs(r.durationSeconds - 2.0) < 0.5,
+      `expected ~2s, got ${r.durationSeconds}`,
+    );
+    assert.strictEqual(r.hasAudio, true);
+    assert.ok(r.widthPx > 0 && r.heightPx > 0);
   });
 });

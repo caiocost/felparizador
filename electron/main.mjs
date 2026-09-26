@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
-import { access, constants as fsConstants } from "node:fs/promises";
+import { access, constants as fsConstants, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -18,7 +18,16 @@ function createWindow() {
     height: 960,
     minWidth: 960,
     minHeight: 720,
-    title: "ffmpeg10mb — Discord",
+    title: "Felparizador",
+    icon: path.join(__dirname, "icon.png"),
+    backgroundColor: "#07070b",
+    // Frameless look: the renderer draws the title bar, Windows keeps its caption buttons.
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#00000000",
+      symbolColor: "#f1f0f7",
+      height: 44,
+    },
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -63,10 +72,14 @@ ipcMain.handle("encode-batch", async (_event, jobs, opts) => {
     targetBytesFromCeilingMiB(ceilingMiB);
   /** Two-pass x264 can exceed target by ~0.5–1 MiB; accept up to this hard max without failing. */
   const flexibleCeilingBytes = Math.floor((ceilingMiB + 0.7) * MIB_TO_BYTES);
-  const encodeTargetBytes = Math.floor(effectiveBytes * 0.985);
+  // encodeVideo applies its own duration-aware overshoot margin; no extra shaving here.
+  const encodeTargetBytes = effectiveBytes;
   const forceNoAudio = opts?.forceNoAudio === true;
   const audioBitrateKbps =
     typeof opts?.audioBitrateKbps === "number" ? opts.audioBitrateKbps : 96;
+  /** "Só converter": CRF por qualidade, sem alvo de tamanho e sem checagem de teto. */
+  const noCeiling = opts?.noCeiling === true;
+  const crf = typeof opts?.crf === "number" ? opts.crf : 23;
 
   const results = [];
   const send = (payload) => {
@@ -106,6 +119,8 @@ ipcMain.handle("encode-batch", async (_event, jobs, opts) => {
         targetEffectiveBytes: encodeTargetBytes,
         forceNoAudio,
         audioBitrateKbps,
+        noCeiling,
+        crf,
         onProgress: (evt) => {
           send({
             kind: "progress",
@@ -117,11 +132,14 @@ ipcMain.handle("encode-batch", async (_event, jobs, opts) => {
         },
       });
 
-      const { sizeBytes, warnAboveTarget } = await verifyOutput(outputPath, {
-        ceilingBytes,
-        ceilingMiB,
-        flexibleCeilingBytes,
-      });
+      // Sem teto não há tamanho a validar — apenas reportamos o resultado.
+      const { sizeBytes, warnAboveTarget } = noCeiling
+        ? { sizeBytes: (await stat(outputPath)).size, warnAboveTarget: false }
+        : await verifyOutput(outputPath, {
+            ceilingBytes,
+            ceilingMiB,
+            flexibleCeilingBytes,
+          });
 
       send({
         kind: "file-done",

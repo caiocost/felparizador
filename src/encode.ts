@@ -29,11 +29,26 @@ export interface EncodeOptions {
   targetEffectiveBytes?: number;
   /** Strip audio even if source has an audio stream */
   forceNoAudio?: boolean;
+  /**
+   * Convert without targeting a file size: quality-driven CRF with no bitrate cap,
+   * and no post-encode size check. Output size is whatever the content needs.
+   */
+  noCeiling?: boolean;
+  /** CRF used when `noCeiling` is set (lower = higher quality/larger file). */
+  crf?: number;
   /** Skip terminal spinner (Electron / programmatic use) */
   quiet?: boolean;
   /** Fired during encode when `quiet` is true (and optional alongside CLI spinner) */
   onProgress?: (evt: EncodeProgressEvent) => void;
 }
+
+/**
+ * Browser MediaRecorder WebM declares no framerate, so ffprobe reports r_frame_rate=1000/1
+ * (millisecond timestamps) and avg_frame_rate=0/0. Without this, ffmpeg duplicates frames to
+ * reach that nominal rate: encodes crawl, two-pass dies with "2nd pass has more frames than
+ * 1st pass", and output size overshoots wildly. Passthrough keeps the source timestamps.
+ */
+const FPS_PASSTHROUGH = ["-fps_mode", "passthrough"];
 
 function nullDevice(): string {
   return process.platform === "win32" ? "NUL" : "/dev/null";
@@ -68,23 +83,32 @@ async function runSinglePassEncode(
     onProgress?.({ phase: "single", percent: 0 });
   }
 
+  // Without a size target, CRF alone drives quality — capping the bitrate would
+  // only degrade the result for no reason.
+  const rateControl = options.noCeiling
+    ? ["-crf", String(options.crf ?? 23)]
+    : [
+        "-crf",
+        "23",
+        "-b:v",
+        `${videoKbps}k`,
+        "-maxrate",
+        `${videoKbps * 1.5}k`,
+        "-bufsize",
+        `${videoKbps * 2}k`,
+      ];
+
   const args = [
     "-hide_banner",
     "-y",
     "-i",
     inputPath,
+    ...FPS_PASSTHROUGH,
     "-c:v",
     "libx264",
     "-preset",
     "medium",
-    "-crf",
-    "23",
-    "-b:v",
-    `${videoKbps}k`,
-    "-maxrate",
-    `${videoKbps * 1.5}k`,
-    "-bufsize",
-    `${videoKbps * 2}k`,
+    ...rateControl,
     "-pix_fmt",
     "yuv420p",
     ...(useAudio ? ["-c:a", "aac", "-b:a", `${audioKbps}k`] : ["-an"]),
@@ -151,7 +175,16 @@ export async function encodeVideo(
   const audioKbpsDefault = options.audioBitrateKbps ?? 96;
   const useAudio = probe.hasAudio && !options.forceNoAudio;
   const audioKbps = useAudio ? audioKbpsDefault : 0;
-  const effectiveBytes = options.targetEffectiveBytes ?? TARGET_EFFECTIVE_BYTES;
+  const requestedBytes = options.targetEffectiveBytes ?? TARGET_EFFECTIVE_BYTES;
+  // Two-pass x264 overshoots its requested bitrate at the low bitrates this tool uses
+  // (measured 1.5–6.5% on real recordings, worst on long clips). The fixed 0.2 MiB gap
+  // between the effective target and the ceiling does not scale with duration, so aim
+  // proportionally below the target instead. Single-pass CRF lands under the target
+  // anyway, so this costs it nothing.
+  const effectiveBytes =
+    probe.durationSeconds >= 30
+      ? Math.floor(requestedBytes * 0.92)
+      : requestedBytes;
   const videoKbps = calculateVideoBitrate(
     effectiveBytes,
     probe.durationSeconds,
@@ -161,8 +194,9 @@ export async function encodeVideo(
   const quiet = options.quiet === true;
   const onProgress = options.onProgress;
 
-  // Use single-pass CRF for short videos to avoid two-pass frame mismatch errors
-  if (probe.durationSeconds < 30) {
+  // Use single-pass CRF for short videos to avoid two-pass frame mismatch errors.
+  // Without a size target, two-pass has nothing to converge on, so always use CRF.
+  if (options.noCeiling || probe.durationSeconds < 30) {
     await runSinglePassEncode(
       ffmpegPath, inputPath, outputPath, videoKbps, useAudio, audioKbps,
       probe.durationSeconds, options, quiet, onProgress,
@@ -179,6 +213,8 @@ export async function encodeVideo(
     "-y",
     "-i",
     inputPath,
+    // Must match pass 2 exactly, or pass 2 sees a different frame count and aborts.
+    ...FPS_PASSTHROUGH,
     "-c:v",
     "libx264",
     "-preset",
@@ -202,6 +238,7 @@ export async function encodeVideo(
     "-y",
     "-i",
     inputPath,
+    ...FPS_PASSTHROUGH,
     "-c:v",
     "libx264",
     "-preset",
@@ -232,8 +269,13 @@ export async function encodeVideo(
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (err) {
-      spinner?.fail("Pass 1 failed");
-      // Fallback to single-pass if two-pass fails
+      spinner?.fail("Pass 1 failed — falling back to single-pass");
+      // Fallback to single-pass if two-pass fails. Surface why: a silent fallback
+      // hides real encoder problems behind a slow, worse-quality retry.
+      if (!quiet) {
+        const stderr = (err as { stderr?: string }).stderr;
+        if (stderr) console.error(stderr.slice(-800));
+      }
       await rm(workDir, { recursive: true, force: true });
       await runSinglePassEncode(
         ffmpegPath, inputPath, outputPath, videoKbps, useAudio, audioKbps,
@@ -283,7 +325,8 @@ export async function encodeVideo(
 
     const result = await subprocess;
     if (result.exitCode !== 0) {
-      spinner?.fail("Pass 2 failed");
+      spinner?.fail("Pass 2 failed — falling back to single-pass");
+      if (!quiet && result.stderr) console.error(result.stderr.slice(-800));
       // Fallback to single-pass if two-pass fails
       await rm(workDir, { recursive: true, force: true });
       await runSinglePassEncode(

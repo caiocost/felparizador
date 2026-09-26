@@ -1,6 +1,7 @@
 // ffmpeg-static is a CJS package; with NodeNext resolution the default export type is
 // not directly inferred, so we cast through unknown to the documented string | null type.
 import ffmpegStaticRaw from 'ffmpeg-static';
+import ffprobeStatic from 'ffprobe-static';
 import { execa } from 'execa';
 import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -8,7 +9,17 @@ import { dirname, join } from 'node:path';
 
 import { FfmpegNotFoundError, InputValidationError } from './errors.js';
 
-const ffmpegStaticPath = ffmpegStaticRaw as unknown as string | null;
+// In the packaged Electron app the binary is unpacked next to app.asar (see "asarUnpack"
+// in package.json) — a path inside the archive can't be spawned.
+const ffmpegStaticPath =
+  (ffmpegStaticRaw as unknown as string | null)?.replace(
+    /app\.asar([\\/])/,
+    'app.asar.unpacked$1',
+  ) ?? null;
+const ffprobeStaticPath = ffprobeStatic.path.replace(
+  /app\.asar([\\/])/,
+  'app.asar.unpacked$1',
+);
 
 /** Result of probing a video file with ffprobe */
 export interface ProbeResult {
@@ -64,33 +75,67 @@ export function resolveFfmpegPath(cliFlag?: string): string | null {
 }
 
 /**
- * Resolves ffprobe: optional CLI override, then PATH, then next to bundled ffmpeg-static.
+ * Resolves ffprobe: optional CLI override, then PATH, then next to bundled ffmpeg-static,
+ * then the ffprobe-static binary — the packaged app runs on machines with no ffmpeg install.
  */
 export async function resolveFfprobePath(cliFlag?: string): Promise<string> {
   if (cliFlag) return cliFlag;
 
-  try {
-    await execa('ffprobe', ['-version']);
-    return 'ffprobe';
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code !== 'ENOENT') throw err;
-  }
-
-  if (ffmpegStaticPath) {
-    const dir = dirname(ffmpegStaticPath);
-    const name = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
-    const adjacent = join(dir, name);
+  const name = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
+  const candidates = [
+    'ffprobe',
+    ...(ffmpegStaticPath ? [join(dirname(ffmpegStaticPath), name)] : []),
+    ffprobeStaticPath,
+  ];
+  for (const candidate of candidates) {
+    // Any failure means "not usable here", not just ENOENT: on Windows a command missing
+    // from PATH can come back as exit code 1 from cmd.exe ("não é reconhecido…").
     try {
-      await execa(adjacent, ['-version']);
-      return adjacent;
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code !== 'ENOENT') throw err;
+      await execa(candidate, ['-version']);
+      return candidate;
+    } catch {
+      // try the next candidate
     }
   }
 
   throw new FfmpegNotFoundError(buildInstallMessage());
+}
+
+/**
+ * Last-resort duration probe for containers that carry no duration in their header —
+ * notably WebM/Matroska written by browser MediaRecorder, which leaves the Segment
+ * duration unset. Reads packet timestamps of the given stream and returns the end
+ * time of the last one. Only timestamps are decoded, so this stays fast even on
+ * large files.
+ */
+async function probeDurationFromPackets(
+  ffprobePath: string,
+  inputPath: string,
+  streamSpecifier: string,
+): Promise<number> {
+  const { stdout } = await execa(ffprobePath, [
+    '-v',
+    'quiet',
+    '-select_streams',
+    streamSpecifier,
+    '-show_entries',
+    'packet=pts_time,duration_time',
+    '-print_format',
+    'csv=p=0',
+    inputPath,
+  ]);
+
+  let end = Number.NaN;
+  for (const line of stdout.split('\n')) {
+    const [ptsRaw, durRaw] = line.trim().split(',');
+    if (ptsRaw === undefined) continue;
+    const pts = parseFloat(ptsRaw);
+    if (Number.isNaN(pts)) continue;
+    const dur = parseFloat(durRaw ?? '');
+    const candidate = pts + (Number.isNaN(dur) ? 0 : dur);
+    if (Number.isNaN(end) || candidate > end) end = candidate;
+  }
+  return end;
 }
 
 async function validateInputFile(inputPath: string): Promise<void> {
@@ -134,9 +179,16 @@ export async function probeVideo(inputPath: string): Promise<ProbeResult> {
   if (Number.isNaN(durationSeconds)) {
     const videoStream = data.streams?.find((s) => s.codec_type === 'video');
     const sd = videoStream?.duration;
-    if (sd !== undefined) durationSeconds = parseFloat(sd);
+    if (sd !== undefined && sd !== 'N/A') durationSeconds = parseFloat(sd);
   }
   if (Number.isNaN(durationSeconds)) {
+    durationSeconds = await probeDurationFromPackets(ffprobePath, inputPath, 'v:0');
+  }
+  if (Number.isNaN(durationSeconds)) {
+    // Audio-only inputs, or video streams whose packets carry no timestamps.
+    durationSeconds = await probeDurationFromPackets(ffprobePath, inputPath, 'a:0');
+  }
+  if (Number.isNaN(durationSeconds) || durationSeconds <= 0) {
     throw new InputValidationError('Could not determine video duration');
   }
 
