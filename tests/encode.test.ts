@@ -134,6 +134,41 @@ describe('encodeVideo — frame count', () => {
   });
 });
 
+describe('encodeVideo — duration-aware resolution', () => {
+  async function frameSize(file: string): Promise<string> {
+    const { stdout } = await execa('ffprobe', [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', file,
+    ]);
+    return stdout.trim();
+  }
+
+  it('downscales when the budget leaves too few bits per pixel, and not otherwise', async () => {
+    // Long clips at a fixed size budget used to keep full resolution with ~150 kbps
+    // of video and fell apart; fewer pixels with the same bits look far better.
+    const dir = await mkdtemp(join(tmpdir(), 'felparizador-test-'));
+    try {
+      const input = join(dir, 'hd.mp4');
+      await execa(resolveFfmpegPath()!, [
+        '-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30',
+        '-t', '32', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', input,
+      ]);
+
+      // ~240 kbps for 32 s of 720p: far below the bits-per-pixel floor.
+      const tight = join(dir, 'tight.mp4');
+      await encodeVideo(input, tight, { quiet: true, targetEffectiveBytes: 1_048_576 });
+      assert.strictEqual(await frameSize(tight), '640x360');
+
+      // Convert-only has no budget to fit, so it never trades resolution away.
+      const convert = join(dir, 'convert.mp4');
+      await encodeVideo(input, convert, { quiet: true, noCeiling: true, crf: 35 });
+      assert.strictEqual(await frameSize(convert), '1280x720');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('encodeVideo — noCeiling', () => {
   it('produces a larger file at a lower CRF, unconstrained by any size target', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'felparizador-test-'));

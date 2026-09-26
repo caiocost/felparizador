@@ -70,3 +70,73 @@ export function calculateVideoBitrate(
   const videoBitrateKbps = Math.floor(availableBits / durationSeconds / 1000);
   return Math.max(1, videoBitrateKbps); // never return 0 or negative
 }
+
+// ──────────────────────────────────────────────────────────────────
+// Duration-aware quality. A fixed size budget spread over a long clip leaves
+// very few bits per second, so the file's duration — not its input size —
+// decides how starved the encode is. At native resolution a 5-minute 720p
+// recording got ~150 kbps of video (VMAF ~36); spending the same bits on fewer
+// pixels and less audio lifted it to ~62. Thresholds below were calibrated
+// against real browser recordings by picking the best-scoring VMAF variant.
+// ──────────────────────────────────────────────────────────────────
+
+/** Largest share of the size budget audio may take before it is lowered. */
+const MAX_AUDIO_SHARE = 0.2;
+/** AAC below this sounds broken; long clips stop lowering audio here. */
+const MIN_AUDIO_KBPS = 48;
+
+/**
+ * Lower the audio bitrate when it would take more than a fifth of the budget.
+ * At 300 s, 96 kbps of audio was ~40% of a 10 MB file. Never raises the
+ * requested bitrate, and never goes below 48 kbps unless asked to.
+ */
+export function capAudioKbps(
+  requestedKbps: number,
+  targetSizeBytes: number,
+  durationSeconds: number,
+): number {
+  const totalKbps = (targetSizeBytes * 8) / durationSeconds / 1000;
+  const capKbps = Math.max(MIN_AUDIO_KBPS, Math.floor(totalKbps * MAX_AUDIO_SHARE));
+  return Math.min(requestedKbps, capKbps);
+}
+
+/**
+ * Below this many bits per pixel per frame, fewer pixels look better than more
+ * starved ones. The best trade depends on content: a simple recording peaked at
+ * ~0.03 bpp, a busy one kept improving up to ~0.05 (0.029 at 480p scored 67.6,
+ * 0.051 at 360p scored 72.0). Erring high costs simple clips under a point;
+ * erring low costs busy ones five, so the floor sits toward the busy end.
+ */
+const MIN_BITS_PER_PIXEL = 0.035;
+/**
+ * Browser recordings declare no framerate (see encode.ts), so bpp is computed at
+ * a nominal rate. They run at about 30 fps.
+ */
+const NOMINAL_FPS = 30;
+/** Short-side rungs, largest first. 360 is the floor: text below it is unreadable. */
+const SHORT_SIDE_RUNGS = [1080, 720, 540, 480, 360];
+
+const toEven = (n: number): number => Math.max(2, Math.round(n / 2) * 2);
+
+/**
+ * Choose the output frame size for a video bitrate: native if it gets enough bits
+ * per pixel, else the largest short-side rung that does, never below 360 and
+ * never above the source. Aspect ratio is kept; sizes are even for yuv420p.
+ */
+export function pickOutputSize(
+  width: number,
+  height: number,
+  videoKbps: number,
+): { width: number; height: number } {
+  const fits = (w: number, h: number) =>
+    (videoKbps * 1000) / (w * h * NOMINAL_FPS) >= MIN_BITS_PER_PIXEL;
+  if (fits(width, height)) return { width, height };
+
+  const shortSide = Math.min(width, height);
+  const candidates = SHORT_SIDE_RUNGS.filter((rung) => rung < shortSide).map((rung) => {
+    const scale = rung / shortSide;
+    return { width: toEven(width * scale), height: toEven(height * scale) };
+  });
+  if (candidates.length === 0) return { width, height };
+  return candidates.find((c) => fits(c.width, c.height)) ?? candidates[candidates.length - 1];
+}

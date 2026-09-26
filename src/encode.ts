@@ -7,7 +7,12 @@ import { createInterface } from "node:readline";
 
 import ora, { type Ora } from "ora";
 
-import { calculateVideoBitrate, TARGET_EFFECTIVE_BYTES } from "./bitrate.js";
+import {
+  calculateVideoBitrate,
+  capAudioKbps,
+  pickOutputSize,
+  TARGET_EFFECTIVE_BYTES,
+} from "./bitrate.js";
 import {
   EncodingCancelledError,
   EncodingFailedError,
@@ -64,6 +69,12 @@ export interface EncodeOptions {
  * 1st pass", and output size overshoots wildly. Passthrough keeps the source timestamps.
  */
 const FPS_PASSTHROUGH = ["-fps_mode", "passthrough"];
+
+/**
+ * Size-targeted encodes use `slow`: at the low bitrates long clips get, it scored
+ * 1–3 VMAF points above `medium` on real recordings for about the same encode time.
+ */
+const TARGETED_PRESET = "slow";
 
 function nullDevice(): string {
   return process.platform === "win32" ? "NUL" : "/dev/null";
@@ -193,6 +204,7 @@ async function runSinglePassEncode(
   useAudio: boolean,
   audioKbps: number,
   duration: number,
+  scaleArgs: string[],
   options: EncodeOptions,
 ): Promise<void> {
   const spinner = options.quiet
@@ -220,10 +232,11 @@ async function runSinglePassEncode(
     "-i",
     inputPath,
     ...FPS_PASSTHROUGH,
+    ...scaleArgs,
     "-c:v",
     "libx264",
     "-preset",
-    "medium",
+    options.noCeiling ? "medium" : TARGETED_PRESET,
     ...rateControl,
     "-pix_fmt",
     "yuv420p",
@@ -268,7 +281,6 @@ export async function encodeVideo(
   throwIfCancelled(options.signal);
   const audioKbpsDefault = options.audioBitrateKbps ?? 96;
   const useAudio = probe.hasAudio && !options.forceNoAudio;
-  const audioKbps = useAudio ? audioKbpsDefault : 0;
   const requestedBytes = options.targetEffectiveBytes ?? TARGET_EFFECTIVE_BYTES;
   // Two-pass x264 overshoots its requested bitrate at the low bitrates this tool uses
   // (measured 1.5–6.5% on real recordings, worst on long clips). The fixed 0.2 MiB gap
@@ -279,16 +291,43 @@ export async function encodeVideo(
     probe.durationSeconds >= 30
       ? Math.floor(requestedBytes * 0.92)
       : requestedBytes;
+  // A long clip's budget is too thin to spend at full audio bitrate and full
+  // resolution; see capAudioKbps / pickOutputSize. Convert-only has no budget.
+  const audioKbps = !useAudio
+    ? 0
+    : options.noCeiling
+      ? audioKbpsDefault
+      : capAudioKbps(audioKbpsDefault, effectiveBytes, probe.durationSeconds);
   const videoKbps = calculateVideoBitrate(
     effectiveBytes,
     probe.durationSeconds,
     audioKbps,
   );
+  const outSize = options.noCeiling
+    ? { width: probe.widthPx, height: probe.heightPx }
+    : pickOutputSize(probe.widthPx, probe.heightPx, videoKbps);
+  // Scale by the short side only: probe sizes ignore rotation metadata while ffmpeg
+  // autorotates before filtering, so fixed W:H would squash a rotated phone clip.
+  // -2 derives the other side from the aspect ratio, rounded to even.
+  const shortSide = Math.min(outSize.width, outSize.height);
+  const scaleArgs =
+    outSize.width === probe.widthPx && outSize.height === probe.heightPx
+      ? []
+      : [
+          "-vf",
+          `scale='if(gte(iw,ih),-2,${shortSide})':'if(gte(iw,ih),${shortSide},-2)':flags=lanczos`,
+        ];
+  if (!quiet && scaleArgs.length > 0) {
+    console.log(
+      `Long clip for the budget: encoding at ${outSize.width}x${outSize.height}` +
+        (useAudio ? `, audio ${audioKbps} kbps` : ""),
+    );
+  }
 
   const singlePass = () =>
     runSinglePassEncode(
       ffmpegPath, inputPath, outputPath, videoKbps, useAudio, audioKbps,
-      probe.durationSeconds, options,
+      probe.durationSeconds, scaleArgs, options,
     );
 
   // Use single-pass CRF for short videos to avoid two-pass frame mismatch errors.
@@ -309,10 +348,11 @@ export async function encodeVideo(
     inputPath,
     // Must match pass 2 exactly, or pass 2 sees a different frame count and aborts.
     ...FPS_PASSTHROUGH,
+    ...scaleArgs,
     "-c:v",
     "libx264",
     "-preset",
-    "medium",
+    TARGETED_PRESET,
     "-pix_fmt",
     "yuv420p",
     "-b:v",
@@ -333,10 +373,11 @@ export async function encodeVideo(
     "-i",
     inputPath,
     ...FPS_PASSTHROUGH,
+    ...scaleArgs,
     "-c:v",
     "libx264",
     "-preset",
-    "medium",
+    TARGETED_PRESET,
     "-pix_fmt",
     "yuv420p",
     "-b:v",
