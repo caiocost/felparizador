@@ -26,6 +26,11 @@ let suspendChain = Promise.resolve();
 /** @type {import("./updater.mjs").UpdateInfo | null} */
 let pendingUpdate = null;
 let installing = false;
+/**
+ * Files this session produced. open-output only opens these, so the renderer can't
+ * ask the shell to launch an arbitrary path.
+ */
+const producedOutputs = new Set();
 
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
@@ -107,6 +112,13 @@ ipcMain.handle("pick-output-dir", async () => {
   });
   if (canceled || !filePaths[0]) return null;
   return filePaths[0];
+});
+
+// Opens a finished file in the system's default player. Resolves to an error message
+// (shell.openPath's contract) or "" on success.
+ipcMain.handle("open-output", async (_event, outputPath) => {
+  if (!producedOutputs.has(outputPath)) return "Arquivo desconhecido";
+  return shell.openPath(outputPath);
 });
 
 // Launched as `electron ./electron/main.mjs`, app.getVersion() reports Electron's own
@@ -281,6 +293,7 @@ async function runBatch(jobs, opts, batch) {
             flexibleCeilingBytes,
           });
 
+      producedOutputs.add(outputPath);
       send({
         kind: "file-done",
         index: i,

@@ -1228,6 +1228,11 @@ body.is-paused .brand__mark {
   color: var(--lime);
 }
 
+/* A finished row opens the converted file; say so on hover. */
+.queue-item[data-state='done']:hover .queue-item__status::after {
+  content: ' · abrir ↗';
+}
+
 .queue-item[data-state='done'] .queue-item__bar {
   width: 100% !important;
   opacity: 0.4;

@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
   pickOutputDir: () => ipcRenderer.invoke('pick-output-dir'),
+  openOutput: (outputPath) => ipcRenderer.invoke('open-output', outputPath),
   pauseEncode: (paused) => ipcRenderer.invoke('encode-pause', paused),
   stopEncode: () => ipcRenderer.invoke('encode-stop'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),

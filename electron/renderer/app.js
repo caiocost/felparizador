@@ -1,6 +1,6 @@
 /**
  * @typedef {'queued' | 'working' | 'done' | 'error'} ItemState
- * @typedef {{ id: string; path: string; name: string; file: File; state: ItemState; status: string; pct: number }} QueuedFile
+ * @typedef {{ id: string; path: string; name: string; file: File; state: ItemState; status: string; pct: number; outputPath?: string }} QueuedFile
  */
 
 const dropzone = document.getElementById("dropzone");
@@ -228,7 +228,7 @@ function renderQueue() {
     li.dataset.id = item.id;
     li.dataset.state = item.state;
     li.classList.toggle("is-selected", item.id === previewId);
-    li.title = item.path;
+    li.title = itemTitle(item);
 
     const idx = document.createElement("span");
     idx.className = "queue-item__idx";
@@ -263,17 +263,40 @@ function renderQueue() {
     bar.className = "queue-item__bar";
     bar.style.width = `${item.pct}%`;
 
-    li.addEventListener("click", () => showPreview(item));
+    li.addEventListener("click", () => {
+      if (item.state === "done" && item.outputPath) openOutput(item);
+      else showPreview(item);
+    });
     li.append(idx, name, st, rm, bar);
     queueList.appendChild(li);
   });
 }
 
 /**
+ * @param {QueuedFile} item
+ */
+function itemTitle(item) {
+  return item.state === "done" && item.outputPath
+    ? `Clique para abrir ${item.outputPath}`
+    : item.path;
+}
+
+/**
+ * A finished row opens the converted file in the system player, straight from the queue.
+ * @param {QueuedFile} item
+ */
+async function openOutput(item) {
+  const err = await window.electronAPI?.openOutput(item.outputPath);
+  if (err) {
+    appendLog(`<span class="warn">Não deu pra abrir ${escapeHtml(item.outputPath ?? "")}:</span> ${escapeHtml(err)}`);
+  }
+}
+
+/**
  * Updates one row in place — re-rendering the whole list on every progress tick would
  * restart the entry animation and flicker.
  * @param {QueuedFile | undefined} item
- * @param {Partial<Pick<QueuedFile, 'state' | 'status' | 'pct'>>} patch
+ * @param {Partial<Pick<QueuedFile, 'state' | 'status' | 'pct' | 'outputPath'>>} patch
  */
 function updateItem(item, patch) {
   if (!item) return;
@@ -281,6 +304,7 @@ function updateItem(item, patch) {
   const li = queueList.querySelector(`[data-id="${item.id}"]`);
   if (!li) return;
   li.dataset.state = item.state;
+  li.title = itemTitle(item);
   li.querySelector(".queue-item__status").textContent = item.status;
   li.querySelector(".queue-item__bar").style.width = `${item.pct}%`;
   if (patch.state === "working") li.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -608,7 +632,12 @@ encodeBtn.addEventListener("click", async () => {
           ? `−${Math.round((1 - data.sizeBytes / inSize) * 100)}%`
           : `${mib} MiB`,
       );
-      updateItem(item, { state: "done", status: `✓ ${mib} MiB`, pct: 100 });
+      updateItem(item, {
+        state: "done",
+        status: `✓ ${mib} MiB`,
+        pct: 100,
+        outputPath: data.outputPath,
+      });
       const warn =
         data.warnAboveTarget === true
           ? ' <span class="warn">(um pouco acima do alvo; ainda dentro da margem segura para o Discord)</span>'
