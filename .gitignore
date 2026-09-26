@@ -3,3 +3,4 @@ dist/
 *.log
 *.log.mbtree
 release/
+.claude/worktrees/
