@@ -224,6 +224,70 @@ body.is-encoding .brand__mark {
   border-left: 1px solid var(--line-strong);
 }
 
+.brand__ver {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* Update pill: sits in the drag region, so it has to opt out to stay clickable. */
+.update-pill {
+  -webkit-app-region: no-drag;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(198, 255, 74, 0.08);
+  color: var(--text);
+  font: 600 12px var(--font);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.update-pill:hover:not(:disabled) {
+  background: rgba(198, 255, 74, 0.16);
+  border-color: var(--lime);
+}
+
+.update-pill:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.update-pill.is-error {
+  background: rgba(255, 90, 95, 0.1);
+  border-color: var(--red);
+}
+
+.update-pill__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 10px var(--lime);
+  animation: update-pulse 1.6s ease-in-out infinite;
+}
+
+.update-pill.is-error .update-pill__dot {
+  background: var(--red);
+  box-shadow: 0 0 10px var(--red);
+}
+
+@keyframes update-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-pill__dot {
+    animation: none;
+  }
+}
+
 /* ─── Layout ───────────────────────────────────────────── */
 
 .app {
@@ -772,61 +836,118 @@ body.is-encoding .brand__mark {
   color: var(--muted);
 }
 
-.loading__tip {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid var(--line-strong);
-  backdrop-filter: blur(8px);
-  z-index: 4;
-}
-
-.loading__tag {
-  flex-shrink: 0;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-family: var(--display);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: var(--ink);
-  background: var(--lime);
-}
-
-.loading__tip-text {
-  margin: 0;
+.loading__phase {
+  margin: 2px 0 0;
   min-height: 1.4em;
+  font-size: 11px;
+  color: var(--cyan);
+}
+
+/* Felpa talking: a mini head with a comic speech bubble — the tips are his lines. */
+.loading__speech {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.loading__speaker {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.12),
+    0 8px 20px -6px rgba(91, 45, 141, 0.9);
+  transform-origin: 50% 100%;
+}
+
+.loading__speech.is-talking .loading__speaker {
+  animation: talk 0.19s ease-in-out infinite alternate;
+}
+
+@keyframes talk {
+  from {
+    transform: rotate(-3deg) scaleY(1);
+  }
+  to {
+    transform: rotate(2deg) scaleY(0.94);
+  }
+}
+
+.loading__bubble {
+  position: relative;
+  margin: 0 0 10px;
+  max-width: min(100%, 460px);
+  min-height: 1.45em;
+  padding: 10px 16px;
+  border-radius: 16px;
+  font-family: var(--display);
   font-size: 14px;
-  font-style: italic;
-  color: var(--text);
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  background: var(--text);
+  box-shadow:
+    3px 3px 0 var(--pink),
+    0 14px 30px -12px rgba(0, 0, 0, 0.8);
+  transform-origin: 0 100%;
+  animation: bubble-in 0.32s cubic-bezier(0.3, 1.6, 0.5, 1) both;
 }
 
-.loading__tip-text::before {
-  content: '“';
-  color: var(--pink);
-  font-weight: 800;
+/* Tail pointing down-left at the speaker's mouth. */
+.loading__bubble::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  bottom: -2px;
+  width: 20px;
+  height: 16px;
+  background: inherit;
+  clip-path: polygon(100% 0, 0 100%, 70% 45%);
 }
 
-.loading__tip-text.is-typing::after,
-.loading__tip-text.is-full::after {
+.loading__bubble:empty::after,
+.loading__bubble.is-typing::after {
   content: '▍';
   margin-left: 2px;
-  font-style: normal;
-  color: var(--lime);
+  color: var(--violet);
+  animation: blink 0.8s steps(1) infinite;
 }
 
-.loading__tip-text.is-full::after {
-  content: '”';
-  color: var(--pink);
-  font-weight: 800;
-  font-style: italic;
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.loading.is-done .loading__speech {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+/* Paused: everything on the loading screen holds still. */
+body.is-paused .loading,
+body.is-paused .loading *,
+body.is-paused .brand__mark {
+  animation-play-state: paused !important;
 }
 
 /* Done: full ring, Felpa rests, heads rain down. */
@@ -1427,13 +1548,111 @@ input[type='range']::-webkit-slider-thumb {
 .go__status {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   padding: 0 4px;
   font-size: 12px;
   color: var(--muted);
 }
 
+/* The phase text grows with speed/ETA; keep it on one line next to the percentage. */
+#progressStep {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .go__status .mono {
   color: var(--lime);
+}
+
+.go__row {
+  display: flex;
+  gap: 8px;
+}
+
+.go__row .btn--go {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Pause/stop only exist while a batch runs. */
+.btn--ctl {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #16161f;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, width 0.2s, color 0.2s;
+}
+
+body.is-encoding .btn--ctl {
+  display: inline-flex;
+}
+
+.btn--ctl svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.btn--ctl:hover:not(:disabled) {
+  border-color: var(--violet);
+  background: #1d1d2a;
+}
+
+.btn--ctl:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.btn--ctl .ico-play,
+.btn--ctl.is-paused .ico-pause {
+  display: none;
+}
+
+.btn--ctl.is-paused .ico-play {
+  display: block;
+}
+
+.btn--ctl.is-paused {
+  color: var(--lime);
+  border-color: var(--lime);
+}
+
+.btn--stop:hover:not(:disabled) {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.btn--stop__confirm {
+  display: none;
+  font: 700 13px var(--display);
+}
+
+/* First click arms, second click stops — a stray click shouldn't throw away a long encode. */
+.btn--stop.is-confirm {
+  width: 118px;
+  color: var(--ink);
+  background: var(--red);
+  border-color: var(--red);
+}
+
+.btn--stop.is-confirm:hover:not(:disabled) {
+  color: var(--ink);
+  background: #ff7377;
+}
+
+.btn--stop.is-confirm .btn--stop__confirm {
+  display: inline;
 }
 
 .btn--go {

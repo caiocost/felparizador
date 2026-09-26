@@ -31,3 +31,8 @@ export class EncodingFailedError extends FfmpegToolError {
 export class OutputOversizeError extends FfmpegToolError {
   constructor(message: string) { super(message, 5); }
 }
+
+/** exitCode 6: the caller aborted the encode via `signal` (e.g. the GUI's stop button) */
+export class EncodingCancelledError extends FfmpegToolError {
+  constructor(message = "Encoding cancelled") { super(message, 6); }
+}

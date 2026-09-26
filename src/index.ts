@@ -13,6 +13,7 @@ export {
   InputValidationError,
   FfmpegNotFoundError,
   EncodingFailedError,
+  EncodingCancelledError,
   OutputOversizeError,
 } from "./errors.js";
 export {

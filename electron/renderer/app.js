@@ -37,8 +37,15 @@ const loadingStage = document.getElementById("loadingStage");
 const loadingFelpa = document.getElementById("loadingFelpa");
 const loadingTitle = document.getElementById("loadingTitle");
 const loadingSub = document.getElementById("loadingSub");
+const loadingPhase = document.getElementById("loadingPhase");
 const ringFill = document.getElementById("ringFill");
 const tipText = document.getElementById("tipText");
+const loadingSpeech = document.getElementById("loadingSpeech");
+const pauseBtn = document.getElementById("pauseBtn");
+const stopBtn = document.getElementById("stopBtn");
+const appVersion = document.getElementById("appVersion");
+const updateBtn = document.getElementById("updateBtn");
+const updateLabel = document.getElementById("updateLabel");
 
 /** @type {QueuedFile[]} */
 let queue = [];
@@ -47,6 +54,9 @@ let previewObjectUrl = null;
 let previewId = null;
 let batchTotalFiles = 0;
 let encoding = false;
+let paused = false;
+/** Set once stop is confirmed, so late progress events don't repaint a running state. */
+let stopping = false;
 
 const IDLE_LABEL = "Felparizar fila";
 
@@ -80,21 +90,49 @@ function computeOutputPath(inputPath, outputDirVal) {
 
 /**
  * Progress of the current file alone, 0–100.
- * @param {'pass1' | 'pass2' | 'single'} phase
+ * @param {'probe' | 'pass1' | 'pass2' | 'single'} phase
  * @param {number | null | undefined} pct
  */
 function computeFilePercent(phase, pct) {
-  if (phase === "pass1") return 25;
   const p = pct == null ? 0 : pct;
+  if (phase === "probe") return 0;
   // Single-pass has no first pass to account for, so it owns the whole slot.
   if (phase === "single") return p;
+  if (phase === "pass1") return p / 2;
   return 50 + p / 2;
+}
+
+const PHASE_TEXT = {
+  probe: "lendo o vídeo",
+  pass1: "passo 1 de 2 · analisando",
+  pass2: "passo 2 de 2 · comprimindo",
+  single: "comprimindo",
+};
+
+/** @param {number} s */
+function fmtEta(s) {
+  const t = Math.round(s);
+  if (t < 60) return `~${t}s`;
+  const m = Math.floor(t / 60);
+  return `~${m}:${String(t % 60).padStart(2, "0")}`;
+}
+
+/**
+ * "passo 1 de 2 · analisando · 3.7x · ~1:20" — what ffmpeg is doing right now, so a
+ * long pass reads as busy rather than stuck.
+ * @param {{ phase: keyof typeof PHASE_TEXT, speed?: number, etaSeconds?: number }} data
+ */
+function describePhase(data) {
+  const parts = [PHASE_TEXT[data.phase] ?? data.phase];
+  if (typeof data.speed === "number") parts.push(`${data.speed.toFixed(1)}x`);
+  if (typeof data.etaSeconds === "number") parts.push(`${fmtEta(data.etaSeconds)} nesse passo`);
+  return parts.join(" · ");
 }
 
 /**
  * @param {number} fileIndex
  * @param {number} total
- * @param {'pass1' | 'pass2' | 'single'} phase
+ * @param {'probe' | 'pass1' | 'pass2' | 'single'} phase
  * @param {number | null | undefined} pct
  */
 function computeOverallPercent(fileIndex, total, phase, pct) {
@@ -112,7 +150,9 @@ function setProgressBar(pct) {
   progressLabel.textContent = `${Math.round(v)}%`;
   progressWrap.setAttribute("aria-valuenow", String(Math.round(v)));
   ringFill.style.strokeDashoffset = String(100 - v);
-  if (encoding) encodeLabel.textContent = `Felparizando · ${Math.round(v)}%`;
+  if (encoding) {
+    encodeLabel.textContent = `${paused ? "Pausado" : "Felparizando"} · ${Math.round(v)}%`;
+  }
 }
 
 /**
@@ -261,7 +301,15 @@ function setEncoding(on) {
   encoding = on;
   document.body.classList.toggle("is-encoding", on);
   encodeBtn.classList.toggle("is-busy", on);
-  if (!on) encodeLabel.textContent = IDLE_LABEL;
+  if (!on) {
+    encodeLabel.textContent = IDLE_LABEL;
+    setPaused(false);
+    stopping = false;
+    disarmStop();
+    pauseBtn.disabled = false;
+    stopBtn.disabled = false;
+  }
+  syncUpdateBtn();
   renderQueue();
 }
 
@@ -277,18 +325,26 @@ let loadingHideTimer = null;
 function typeTip(text) {
   clearInterval(typeTimer);
   tipText.textContent = "";
-  tipText.className = "loading__tip-text is-typing";
+  tipText.className = "loading__bubble is-typing";
+  // Replay the pop-in so each line reads as a new thing he says.
+  tipText.style.animation = "none";
+  void tipText.offsetWidth;
+  tipText.style.animation = "";
+  loadingSpeech.classList.add("is-talking");
   let i = 0;
   typeTimer = setInterval(() => {
+    if (paused) return;
     tipText.textContent = text.slice(0, ++i);
     if (i >= text.length) {
       clearInterval(typeTimer);
-      tipText.className = "loading__tip-text is-full";
+      tipText.className = "loading__bubble";
+      loadingSpeech.classList.remove("is-talking");
     }
   }, 38);
 }
 
 function nextTip() {
+  if (paused) return;
   tipIndex = (tipIndex + 1) % TIPS.length;
   typeTip(TIPS[tipIndex]);
 }
@@ -346,6 +402,7 @@ function startLoading() {
   loadingScreen.classList.remove("is-done");
   loadingTitle.textContent = "Felparizando…";
   loadingSub.textContent = "";
+  loadingPhase.textContent = "";
   typeTip(TIPS[tipIndex]);
   clearInterval(tipTimer);
   tipTimer = setInterval(nextTip, 4500);
@@ -360,6 +417,7 @@ function finishLoading(title, sub) {
   loadingScreen.classList.add("is-done");
   loadingTitle.textContent = title;
   loadingSub.textContent = sub;
+  loadingPhase.textContent = "";
   rainFelpas();
   loadingHideTimer = setTimeout(hideLoading, 7000);
 }
@@ -520,14 +578,22 @@ encodeBtn.addEventListener("click", async () => {
       appendLog(
         `<span class="accent">[${data.index + 1}/${data.total}]</span> ${escapeHtml(data.inputPath)}`,
       );
-      setProgressBar(computeOverallPercent(data.index, data.total, "pass1", null));
+      setProgressBar(computeOverallPercent(data.index, data.total, "probe", null));
     }
     if (data.kind === "progress") {
+      if (stopping) return;
       const total = data.total ?? batchTotalFiles;
       const filePct = computeFilePercent(data.phase, data.percent);
       const label =
-        data.phase === "pass1" ? "passo 1" : `${Math.round(filePct)}%`;
-      updateItem(item, { status: label, pct: filePct });
+        data.phase === "probe"
+          ? "lendo"
+          : data.phase === "pass1"
+            ? `analisando ${Math.round(filePct)}%`
+            : `${Math.round(filePct)}%`;
+      updateItem(item, { status: label, pct: Math.max(2, filePct) });
+      const phaseText = describePhase(data);
+      progressStep.textContent = `Arquivo ${data.index + 1} de ${total} · ${phaseText}`;
+      loadingPhase.textContent = phaseText;
       setProgressBar(computeOverallPercent(data.index, total, data.phase, data.percent));
     }
     if (data.kind === "file-done") {
@@ -551,10 +617,26 @@ encodeBtn.addEventListener("click", async () => {
         `<span class="ok">✓</span> ${escapeHtml(data.outputPath)} <span class="ok">(${mib} MiB)</span>${warn}`,
       );
     }
+    if (data.kind === "file-cancelled") {
+      updateItem(item, { state: "queued", status: "parado", pct: 0 });
+      appendLog('<span class="warn">■ Parado.</span> O arquivo pela metade foi apagado.');
+    }
     if (data.kind === "file-error") {
       updateItem(item, { state: "error", status: "erro", pct: 0 });
       burst("deu ruim", true);
       appendLog(`<span class="err">✗</span> ${escapeHtml(data.message)}`);
+    }
+    if (data.kind === "batch-done" && data.cancelled) {
+      progressStep.textContent = `Parado · ${okCount} de ${data.total} prontos`;
+      appendLog('<span class="accent">▸ Lote interrompido.</span>');
+      hideLoading();
+      if (progressHideTimer) clearTimeout(progressHideTimer);
+      progressHideTimer = setTimeout(() => {
+        if (encoding) return;
+        progressWrap.hidden = true;
+        setProgressBar(0);
+      }, 4000);
+      return;
     }
     if (data.kind === "batch-done") {
       setProgressBar(100);
@@ -577,7 +659,7 @@ encodeBtn.addEventListener("click", async () => {
 
   try {
     await window.electronAPI.encodeBatch(jobs, opts);
-    encodeBtn.classList.add("is-done");
+    if (!stopping) encodeBtn.classList.add("is-done");
   } catch (e) {
     appendLog(
       `<span class="err">${escapeHtml(e instanceof Error ? e.message : String(e))}</span>`,
@@ -586,6 +668,122 @@ encodeBtn.addEventListener("click", async () => {
     hideLoading();
   } finally {
     setEncoding(false);
+  }
+});
+
+/* ─── Pause / stop ─── */
+
+/** @param {boolean} on */
+function setPaused(on) {
+  paused = on;
+  document.body.classList.toggle("is-paused", on);
+  pauseBtn.classList.toggle("is-paused", on);
+  const label = on ? "Continuar" : "Pausar";
+  pauseBtn.setAttribute("aria-label", label);
+  pauseBtn.title = label;
+  if (!encoding) return;
+  loadingTitle.textContent = on ? "Pausado" : "Felparizando…";
+  // Frozen ffmpeg sends nothing, so these hold until the next real progress line.
+  progressStep.textContent = on ? "Pausado · clica ▶ pra continuar" : "Continuando…";
+  loadingPhase.textContent = on ? "pausado" : "continuando…";
+  encodeLabel.textContent = encodeLabel.textContent.replace(
+    /^(Pausado|Felparizando)/,
+    on ? "Pausado" : "Felparizando",
+  );
+}
+
+pauseBtn.addEventListener("click", async () => {
+  if (!encoding || stopping) return;
+  pauseBtn.disabled = true;
+  try {
+    setPaused(await window.electronAPI.pauseEncode(!paused));
+  } catch (e) {
+    appendLog(`<span class="err">${escapeHtml(e instanceof Error ? e.message : String(e))}</span>`);
+  } finally {
+    pauseBtn.disabled = !encoding || stopping;
+  }
+});
+
+let stopArmTimer = null;
+
+function disarmStop() {
+  clearTimeout(stopArmTimer);
+  stopBtn.classList.remove("is-confirm");
+  stopBtn.setAttribute("aria-label", "Parar");
+  stopBtn.title = "Parar";
+}
+
+stopBtn.addEventListener("click", async () => {
+  if (!encoding || stopping) return;
+  if (!stopBtn.classList.contains("is-confirm")) {
+    stopBtn.classList.add("is-confirm");
+    stopBtn.setAttribute("aria-label", "Confirmar: parar o lote");
+    stopBtn.title = "Clica de novo pra parar";
+    clearTimeout(stopArmTimer);
+    stopArmTimer = setTimeout(disarmStop, 3000);
+    return;
+  }
+  disarmStop();
+  stopping = true;
+  pauseBtn.disabled = true;
+  stopBtn.disabled = true;
+  setPaused(false);
+  progressStep.textContent = "Parando…";
+  loadingTitle.textContent = "Parando…";
+  await window.electronAPI.stopEncode();
+});
+
+/* ─── Self-update: GitHub release → download → swap exe → reopen ─── */
+
+/** @type {string | null} */
+let updateVersion = null;
+let updateBusy = false;
+
+function syncUpdateBtn() {
+  if (!updateVersion) return;
+  updateBtn.hidden = false;
+  // Main refuses mid-batch too; disabling here just makes that visible.
+  updateBtn.disabled = updateBusy || encoding;
+  if (!updateBusy) {
+    updateBtn.classList.remove("is-error");
+    updateLabel.textContent = encoding
+      ? `v${updateVersion} disponível · atualiza depois do lote`
+      : `v${updateVersion} disponível · atualizar`;
+  }
+}
+
+if (window.electronAPI) {
+  window.electronAPI.getAppVersion().then((v) => {
+    appVersion.textContent = `v${v}`;
+  });
+  window.electronAPI.onUpdateAvailable(({ version }) => {
+    updateVersion = version;
+    syncUpdateBtn();
+  });
+  window.electronAPI.onUpdateProgress(({ percent }) => {
+    updateLabel.textContent =
+      // The portable exe unpacks itself before its window shows, so the gap is real.
+      percent >= 100
+        ? "reiniciando… reabre em uns 20s"
+        : `baixando v${updateVersion} · ${percent}%`;
+  });
+}
+
+updateBtn.addEventListener("click", async () => {
+  if (updateBusy || encoding) return;
+  updateBusy = true;
+  syncUpdateBtn();
+  updateLabel.textContent = `baixando v${updateVersion}…`;
+  try {
+    // On success the app quits and the new version opens in its place.
+    await window.electronAPI.installUpdate();
+  } catch (e) {
+    updateBusy = false;
+    syncUpdateBtn();
+    updateBtn.classList.add("is-error");
+    updateLabel.textContent = "falhou · tentar de novo";
+    // Electron prefixes IPC errors with the channel; keep only our message.
+    updateBtn.title = String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
   }
 });
 

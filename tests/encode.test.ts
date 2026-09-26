@@ -5,7 +5,14 @@ import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { __testOnlyParseTimeSeconds, encodeVideo } from '../src/encode.ts';
+import {
+  __testOnlyParseSpeed,
+  __testOnlyParseTimeSeconds,
+  encodeVideo,
+  type EncodeProgressEvent,
+} from '../src/encode.ts';
+import { EncodingCancelledError } from '../src/errors.ts';
+import { resolveFfmpegPath } from '../src/probe.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dirname, 'fixtures');
 const SHORT_MP4 = resolve(FIXTURE_DIR, 'short.mp4');
@@ -18,6 +25,79 @@ describe('encode progress parse', () => {
 
   it('returns null when no time=', () => {
     assert.strictEqual(__testOnlyParseTimeSeconds('configuration: --enable-libx264'), null);
+  });
+
+  it('parses ffmpeg speed= from stderr line', () => {
+    const line = 'frame= 900 fps=112 q=-0.0 size=N/A time=00:00:30.00 bitrate=N/A speed=3.74x';
+    assert.strictEqual(__testOnlyParseSpeed(line), 3.74);
+    assert.strictEqual(__testOnlyParseSpeed('speed=   0x'), null);
+    assert.strictEqual(__testOnlyParseSpeed('speed=N/A'), null);
+  });
+});
+
+/** ≥ 30s so encodeVideo takes the two-pass path. */
+async function makeLongInput(dir: string): Promise<string> {
+  const input = join(dir, 'long.mp4');
+  await execa(resolveFfmpegPath()!, [
+    '-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=30',
+    '-t', '32', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', input,
+  ]);
+  return input;
+}
+
+describe('encodeVideo — cancel', () => {
+  it('stops ffmpeg and rejects with EncodingCancelledError instead of falling back', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'felparizador-test-'));
+    try {
+      const input = await makeLongInput(dir);
+      const ac = new AbortController();
+      const phases: string[] = [];
+      const pids: number[] = [];
+      const started = Date.now();
+      await assert.rejects(
+        encodeVideo(input, join(dir, 'out.mp4'), {
+          quiet: true,
+          signal: ac.signal,
+          onSpawn: (pid) => pids.push(pid),
+          onProgress: (e) => {
+            phases.push(e.phase);
+            if (e.phase === 'pass1' && (e.percent ?? 0) > 0) ac.abort();
+          },
+        }),
+        EncodingCancelledError,
+      );
+      assert.ok(pids.length === 1, `expected only pass 1 to start, got ${pids.length} processes`);
+      assert.ok(!phases.includes('single'), 'cancel must not trigger the single-pass fallback');
+      assert.ok(Date.now() - started < 20_000);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('encodeVideo — two-pass progress', () => {
+  it('reports intermediate progress during pass 1, not just start and end', async () => {
+    // Pass 1 used to report nothing until it finished, so the GUI sat on a fixed 25%
+    // for minutes on long recordings and looked frozen.
+    const dir = await mkdtemp(join(tmpdir(), 'felparizador-test-'));
+    try {
+      const input = await makeLongInput(dir);
+
+      const events: EncodeProgressEvent[] = [];
+      await encodeVideo(input, join(dir, 'out.mp4'), {
+        quiet: true,
+        onProgress: (e) => events.push(e),
+      });
+
+      assert.strictEqual(events[0]?.phase, 'probe');
+      const pass1Mid = events.filter(
+        (e) => e.phase === 'pass1' && e.percent !== null && e.percent > 0 && e.percent < 100,
+      );
+      assert.ok(pass1Mid.length > 0, `no intermediate pass1 progress: ${JSON.stringify(events)}`);
+      assert.ok(events.some((e) => e.phase === 'pass2' && e.percent === 100));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
